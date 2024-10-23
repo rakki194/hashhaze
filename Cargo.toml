@@ -1,9 +1,10 @@
+cargo-features = ["edition2024"]
+
 [package]
 name = "blurhash"
-version = "0.2.0"
-authors = ["fpapado <fgpapado@gmail.com>"]
-edition = "2018"
-
+version = "0.3.0"
+authors = ["Balazs Horvath <acsipont@gmail.com>"]
+edition = "2024"
 description = "A CLI application for generating BlurHash from images"
 license = "MIT"
 
