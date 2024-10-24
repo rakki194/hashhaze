@@ -37,14 +37,11 @@ fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn std::erro
     let mut image_paths = Vec::new();
 
     for input in inputs {
-        if input.is_dir() {
-            for entry in fs::read_dir(input)? {
-                let entry = entry?;
-                let path = entry.path();
-                if is_image_file(&path) {
-                    image_paths.push(path);
-                }
-            }
+        if input.as_os_str().is_empty() || input == Path::new(".") {
+            // If input is empty or ".", use the current directory
+            search_directory(&std::env::current_dir()?, &mut image_paths)?;
+        } else if input.is_dir() {
+            search_directory(input, &mut image_paths)?;
         } else if is_image_file(input) {
             image_paths.push(input.to_path_buf());
         }
@@ -62,6 +59,17 @@ fn is_image_file(path: &Path) -> bool {
 }
 
 fn process_image(input: &Path, components_x: usize, components_y: usize) -> Result<(), Box<dyn std::error::Error>> {
+    // Generate the output filename
+    let mut output_filename = input.to_path_buf();
+    let new_extension = format!("{}.bh", output_filename.extension().unwrap_or_default().to_str().unwrap_or(""));
+    output_filename.set_extension(new_extension);
+
+    // Check if the .bh file already exists
+    if output_filename.exists() {
+        println!("Skipping {}: BlurHash file already exists", input.display());
+        return Ok(());
+    }
+
     let img = image::open(input)?;
     let (width, height) = img.dimensions();
     let rgba_image = img.to_rgba8();
@@ -75,15 +83,32 @@ fn process_image(input: &Path, components_x: usize, components_y: usize) -> Resu
         height as usize,
     )?;
 
-    // Generate the output filename
-    let mut output_filename = input.to_path_buf();
-    let new_extension = format!("{}.bh", output_filename.extension().unwrap_or_default().to_str().unwrap_or(""));
-    output_filename.set_extension(new_extension);
-
     // Save the BlurHash to the file
     std::fs::write(&output_filename, &blurhash)?;
 
     println!("BlurHash saved to: {}", output_filename.display());
 
+    Ok(())
+}
+
+fn search_directory(dir: &Path, image_paths: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            search_directory(&path, image_paths)?;
+        } else if is_image_file(&path) {
+            // Check if a corresponding .bh file already exists
+            let mut bh_path = path.clone();
+            let new_extension = format!("{}.bh", bh_path.extension().unwrap_or_default().to_str().unwrap_or(""));
+            bh_path.set_extension(new_extension);
+            
+            if !bh_path.exists() {
+                image_paths.push(path);
+            } else {
+                println!("Skipping {}: BlurHash file already exists", path.display());
+            }
+        }
+    }
     Ok(())
 }
