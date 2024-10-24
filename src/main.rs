@@ -2,6 +2,9 @@ use clap::Parser;
 use image::GenericImageView;
 use std::path::{Path, PathBuf};
 use std::fs;
+use tokio::sync::Semaphore;
+use futures::future::join_all;
+use std::sync::Arc;
 
 mod blurhash;
 
@@ -21,19 +24,42 @@ struct Args {
     components_y: usize,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
     let image_paths = get_image_paths(&args.inputs)?;
 
-    for image_path in image_paths {
-        process_image(&image_path, args.components_x, args.components_y)?;
+    // Create a semaphore to limit concurrent tasks
+    let semaphore = Arc::new(Semaphore::new(num_cpus::get()));
+
+    let tasks: Vec<_> = image_paths
+        .into_iter()
+        .map(|path| {
+            let sem = semaphore.clone();
+            let components_x = args.components_x;
+            let components_y = args.components_y;
+            tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                process_image(path, components_x, components_y).await
+            })
+        })
+        .collect();
+
+    // Wait for all tasks to complete
+    let results = join_all(tasks).await;
+
+    // Check for any errors
+    for result in results {
+        if let Err(e) = result? {
+            eprintln!("Error processing image: {}", e);
+        }
     }
 
     Ok(())
 }
 
-fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn std::error::Error + Send + Sync>> {
     let mut image_paths = Vec::new();
 
     for input in inputs {
@@ -58,9 +84,9 @@ fn is_image_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn process_image(input: &Path, components_x: usize, components_y: usize) -> Result<(), Box<dyn std::error::Error>> {
+async fn process_image(input: PathBuf, components_x: usize, components_y: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Generate the output filename
-    let mut output_filename = input.to_path_buf();
+    let mut output_filename = input.clone();
     let new_extension = format!("{}.bh", output_filename.extension().unwrap_or_default().to_str().unwrap_or(""));
     output_filename.set_extension(new_extension);
 
@@ -70,7 +96,7 @@ fn process_image(input: &Path, components_x: usize, components_y: usize) -> Resu
         return Ok(());
     }
 
-    let img = image::open(input)?;
+    let img = tokio::task::spawn_blocking(move || image::open(&input)).await??;
     let (width, height) = img.dimensions();
     let rgba_image = img.to_rgba8();
     let pixels: Vec<u8> = rgba_image.into_raw();
@@ -84,14 +110,14 @@ fn process_image(input: &Path, components_x: usize, components_y: usize) -> Resu
     )?;
 
     // Save the BlurHash to the file
-    std::fs::write(&output_filename, &blurhash)?;
+    tokio::fs::write(&output_filename, &blurhash).await?;
 
     println!("BlurHash saved to: {}", output_filename.display());
 
     Ok(())
 }
 
-fn search_directory(dir: &Path, image_paths: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+fn search_directory(dir: &Path, image_paths: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
