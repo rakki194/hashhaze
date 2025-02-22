@@ -3,7 +3,6 @@ use std::convert::TryFrom;
 use std::f64::consts::PI;
 use thiserror::*;
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
 pub enum EncodingError {
     #[error("cannot encode this number of components")]
@@ -216,11 +215,9 @@ static ENCODE_CHARACTERS: [char; 83] = [
     ']', '^', '_', '{', '|', '}', '~',
 ];
 
-
 fn encode_base83_string(value: usize, length: u32) -> String {
     (1..=length)
         .map(|i| (value / usize::pow(83, length - i)) % 83)
         .map(|digit| ENCODE_CHARACTERS[digit])
         .collect()
 }
-

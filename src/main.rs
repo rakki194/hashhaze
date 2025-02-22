@@ -1,10 +1,11 @@
+use anyhow::Result;
 use clap::Parser;
-use image::GenericImageView;
-use std::path::{Path, PathBuf};
-use std::fs;
-use tokio::sync::Semaphore;
 use futures::future::join_all;
+use imx::{get_image_dimensions, is_image_file, process_jxl_file};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::sync::Semaphore;
+use xio::{read_file_content, walk_directory, write_to_file};
 
 mod blurhash;
 
@@ -25,10 +26,10 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let image_paths = get_image_paths(&args.inputs)?;
+    let image_paths = get_image_paths(&args.inputs).await?;
 
     // Create a semaphore to limit concurrent tasks
     let semaphore = Arc::new(Semaphore::new(num_cpus::get()));
@@ -59,35 +60,74 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn std::error::Error + Send + Sync>> {
+async fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut image_paths = Vec::new();
 
     for input in inputs {
         if input.as_os_str().is_empty() || input == Path::new(".") {
             // If input is empty or ".", use the current directory
-            search_directory(&std::env::current_dir()?, &mut image_paths)?;
+            walk_directory(".", "*", |path| {
+                let path = path.to_path_buf();
+                async move {
+                    if is_image_file(&path.to_string_lossy()) {
+                        check_and_add_image_path(&path, &mut image_paths).await?;
+                    }
+                    Ok(())
+                }
+            })
+            .await?;
         } else if input.is_dir() {
-            search_directory(input, &mut image_paths)?;
-        } else if is_image_file(input) {
-            image_paths.push(input.to_path_buf());
+            walk_directory(input, "*", |path| {
+                let path = path.to_path_buf();
+                async move {
+                    if is_image_file(&path.to_string_lossy()) {
+                        check_and_add_image_path(&path, &mut image_paths).await?;
+                    }
+                    Ok(())
+                }
+            })
+            .await?;
+        } else if is_image_file(&input.to_string_lossy()) {
+            check_and_add_image_path(input, &mut image_paths).await?;
         }
     }
 
     Ok(image_paths)
 }
 
-fn is_image_file(path: &Path) -> bool {
-    let extensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff"];
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| extensions.contains(&ext.to_lowercase().as_str()))
-        .unwrap_or(false)
+async fn check_and_add_image_path(path: &Path, image_paths: &mut Vec<PathBuf>) -> Result<()> {
+    // Generate the output filename
+    let mut output_filename = path.to_path_buf();
+    let new_extension = format!(
+        "{}.bh",
+        output_filename
+            .extension()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or("")
+    );
+    output_filename.set_extension(new_extension);
+
+    // Check if the .bh file already exists
+    if !output_filename.exists() {
+        image_paths.push(path.to_path_buf());
+    } else {
+        println!("Skipping {}: BlurHash file already exists", path.display());
+    }
+    Ok(())
 }
 
-async fn process_image(input: PathBuf, components_x: usize, components_y: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn process_image(input: PathBuf, components_x: usize, components_y: usize) -> Result<()> {
     // Generate the output filename
     let mut output_filename = input.clone();
-    let new_extension = format!("{}.bh", output_filename.extension().unwrap_or_default().to_str().unwrap_or(""));
+    let new_extension = format!(
+        "{}.bh",
+        output_filename
+            .extension()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or("")
+    );
     output_filename.set_extension(new_extension);
 
     // Check if the .bh file already exists
@@ -96,8 +136,30 @@ async fn process_image(input: PathBuf, components_x: usize, components_y: usize)
         return Ok(());
     }
 
-    let img = tokio::task::spawn_blocking(move || image::open(&input)).await??;
-    let (width, height) = img.dimensions();
+    // Handle JXL files specially
+    if is_jxl_file(&input.to_string_lossy()) {
+        let temp_png = input.with_extension("png");
+        process_jxl_file(&input, Some(|_| async move { Ok(()) })).await?;
+        let blurhash = process_regular_image(&temp_png, components_x, components_y).await?;
+        write_to_file(&output_filename, &blurhash).await?;
+        tokio::fs::remove_file(&temp_png).await?;
+    } else {
+        let blurhash = process_regular_image(&input, components_x, components_y).await?;
+        write_to_file(&output_filename, &blurhash).await?;
+    }
+
+    println!("BlurHash saved to: {}", output_filename.display());
+
+    Ok(())
+}
+
+async fn process_regular_image(
+    input: &Path,
+    components_x: usize,
+    components_y: usize,
+) -> Result<String> {
+    let img = tokio::task::spawn_blocking(move || image::open(input)).await??;
+    let (width, height) = get_image_dimensions(input)?;
     let rgba_image = img.to_rgba8();
     let pixels: Vec<u8> = rgba_image.into_raw();
 
@@ -109,32 +171,5 @@ async fn process_image(input: PathBuf, components_x: usize, components_y: usize)
         height as usize,
     )?;
 
-    // Save the BlurHash to the file
-    tokio::fs::write(&output_filename, &blurhash).await?;
-
-    println!("BlurHash saved to: {}", output_filename.display());
-
-    Ok(())
-}
-
-fn search_directory(dir: &Path, image_paths: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            search_directory(&path, image_paths)?;
-        } else if is_image_file(&path) {
-            // Check if a corresponding .bh file already exists
-            let mut bh_path = path.clone();
-            let new_extension = format!("{}.bh", bh_path.extension().unwrap_or_default().to_str().unwrap_or(""));
-            bh_path.set_extension(new_extension);
-            
-            if !bh_path.exists() {
-                image_paths.push(path);
-            } else {
-                println!("Skipping {}: BlurHash file already exists", path.display());
-            }
-        }
-    }
-    Ok(())
+    Ok(blurhash)
 }
