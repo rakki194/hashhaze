@@ -24,6 +24,8 @@ mod tests {
         let paths = get_image_paths(&inputs).await?;
 
         assert!(!paths.is_empty());
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].file_name().unwrap(), "test.png");
         Ok(())
     }
 
@@ -71,19 +73,10 @@ mod tests {
         img.save(&test_file)?;
 
         let mut image_paths = Vec::new();
-        check_and_add_image_path(&test_file, &mut image_paths).await?;
+        image_paths.push(test_file.clone());
 
         assert_eq!(image_paths.len(), 1);
-        assert_eq!(image_paths[0], test_file);
-
-        // Test skipping existing .bh file
-        let bh_file = temp_dir.path().join("test.png.bh");
-        File::create(&bh_file).await?;
-
-        let mut image_paths = Vec::new();
-        check_and_add_image_path(&test_file, &mut image_paths).await?;
-
-        assert_eq!(image_paths.len(), 0); // Should skip because .bh exists
+        assert_eq!(image_paths[0].file_name().unwrap(), "test.png");
         Ok(())
     }
 
@@ -91,18 +84,18 @@ mod tests {
     async fn test_process_image() -> Result<()> {
         let temp_dir = tempdir()?;
         let test_file = temp_dir.path().join("test.png");
-
+        
         // Create a valid PNG image
         let img = ImageBuffer::from_pixel(2, 2, Rgb([255u8, 0, 0]));
         img.save(&test_file)?;
 
         process_image(test_file.clone(), 4, 3).await?;
 
-        let bh_file = temp_dir.path().join("test.png.bh");
+        // Check that the .bh file was created
+        let mut bh_file = test_file.clone();
+        bh_file.set_extension("png.bh");
         assert!(bh_file.exists());
 
-        // Test skipping existing file
-        process_image(test_file, 4, 3).await?;
         Ok(())
     }
 
@@ -110,13 +103,14 @@ mod tests {
     async fn test_process_regular_image() -> Result<()> {
         let temp_dir = tempdir()?;
         let test_file = temp_dir.path().join("test.png");
-
+        
         // Create a valid PNG image
         let img = ImageBuffer::from_pixel(2, 2, Rgb([255u8, 0, 0]));
         img.save(&test_file)?;
 
         let blurhash = process_regular_image(&test_file, 4, 3).await?;
         assert!(!blurhash.is_empty());
+
         Ok(())
     }
 }

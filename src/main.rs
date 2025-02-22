@@ -1,15 +1,45 @@
 use anyhow::Result;
 use clap::Parser;
 use futures::future::join_all;
-use imx::{get_image_dimensions, is_image_file, is_jxl_file, process_jxl_file};
+use imx::{get_image_dimensions, is_jxl_file, process_jxl_file};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
-use xio::{walk_directory, write_to_file};
+use xio::write_to_file;
+use tokio::fs;
+use std::future::Future;
+use std::pin::Pin;
 
 mod blurhash;
 #[cfg(test)]
 mod tests;
+
+// Helper function to check if a file is an image based on extension
+pub(crate) fn is_image_file(path: &Path) -> bool {
+    if let Some(ext) = path.extension() {
+        let ext = ext.to_string_lossy().to_lowercase();
+        matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "webp")
+    } else {
+        false
+    }
+}
+
+// Helper function to walk a directory recursively
+pub(crate) fn walk_directory(path: &Path, image_paths: Arc<Mutex<Vec<PathBuf>>>) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
+    Box::pin(async move {
+        let mut entries = fs::read_dir(path).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_dir() {
+                walk_directory(&path, image_paths.clone()).await?;
+            } else if is_image_file(&path) {
+                let mut paths = image_paths.lock().await;
+                paths.push(path);
+            }
+        }
+        Ok(())
+    })
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -62,7 +92,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
+pub(crate) async fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let image_paths = Arc::new(Mutex::new(Vec::new()));
 
     for input in inputs {
@@ -73,44 +103,17 @@ async fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
         };
 
         if input_path.is_dir() {
-            let paths = image_paths.clone();
-            walk_directory(input_path, "*", move |path| {
-                let path = path.to_path_buf();
-                let paths = paths.clone();
-                async move {
-                    if is_image_file(path.as_path()) {
-                        let mut paths = paths.lock().await;
-                        check_and_add_image_path(&path, &mut paths).await?;
-                    }
-                    Ok(())
-                }
-            })
-            .await?;
+            walk_directory(input_path, image_paths.clone()).await?;
         } else if is_image_file(input_path) {
             let mut paths = image_paths.lock().await;
-            check_and_add_image_path(input_path, &mut paths).await?;
+            paths.push(input_path.to_path_buf());
         }
     }
 
-    Ok(Arc::try_unwrap(image_paths).unwrap().into_inner())
-}
-
-async fn check_and_add_image_path(path: &Path, image_paths: &mut Vec<PathBuf>) -> Result<()> {
-    // Generate the output filename by appending .bh
-    let mut output_filename = path.to_path_buf();
-    output_filename.set_extension(format!("{}.bh", 
-        path.extension()
-            .unwrap_or_default()
-            .to_str()
-            .unwrap_or("")));
-
-    // Check if the .bh file already exists
-    if !output_filename.exists() {
-        image_paths.push(path.to_path_buf());
-    } else {
-        println!("Skipping {}: BlurHash file already exists", path.display());
-    }
-    Ok(())
+    let paths = Arc::try_unwrap(image_paths)
+        .expect("Failed to unwrap Arc")
+        .into_inner();
+    Ok(paths)
 }
 
 async fn process_image(input: PathBuf, components_x: usize, components_y: usize) -> Result<()> {
