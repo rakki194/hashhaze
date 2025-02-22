@@ -20,7 +20,7 @@ pub(crate) fn sign_pow(value: f64, exp: f64) -> f64 {
 }
 
 pub(crate) fn linear_to_srgb(value: f64) -> usize {
-    let v = f64::max(0f64, f64::min(1f64, value));
+    let v = value.clamp(0f64, 1f64);
     if v <= 0.003_130_8 {
         (v * 12.92 * 255f64 + 0.5) as usize
     } else {
@@ -179,27 +179,15 @@ pub(crate) fn encode_dc(value: [f64; 3]) -> usize {
 }
 
 pub(crate) fn encode_ac(value: [f64; 3], maximum_value: f64) -> usize {
-    let quant_r = f64::floor(f64::max(
-        0f64,
-        f64::min(
-            18f64,
-            f64::floor(sign_pow(value[0] / maximum_value, 0.5) * 9f64 + 9.5),
-        ),
-    ));
-    let quant_g = f64::floor(f64::max(
-        0f64,
-        f64::min(
-            18f64,
-            f64::floor(sign_pow(value[1] / maximum_value, 0.5) * 9f64 + 9.5),
-        ),
-    ));
-    let quant_b = f64::floor(f64::max(
-        0f64,
-        f64::min(
-            18f64,
-            f64::floor(sign_pow(value[2] / maximum_value, 0.5) * 9f64 + 9.5),
-        ),
-    ));
+    let quant_r = f64::floor(
+        f64::floor(sign_pow(value[0] / maximum_value, 0.5) * 9f64 + 9.5).clamp(0f64, 18f64)
+    );
+    let quant_g = f64::floor(
+        f64::floor(sign_pow(value[1] / maximum_value, 0.5) * 9f64 + 9.5).clamp(0f64, 18f64)
+    );
+    let quant_b = f64::floor(
+        f64::floor(sign_pow(value[2] / maximum_value, 0.5) * 9f64 + 9.5).clamp(0f64, 18f64)
+    );
 
     (quant_r * 19f64 * 19f64 + quant_g * 19f64 + quant_b) as usize
 }

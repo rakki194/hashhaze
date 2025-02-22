@@ -6,9 +6,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
 use xio::{walk_directory, write_to_file};
-use tokio::fs;
-use std::future::Future;
-use std::pin::Pin;
 
 mod blurhash;
 #[cfg(test)]
