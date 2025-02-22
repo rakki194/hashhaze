@@ -1,5 +1,5 @@
 [package]
-name = "blurhash"
+name = "hashhaze"
 version = "0.3.0"
 authors = ["Balazs Horvath <acsipont@gmail.com>"]
 edition = "2024"
