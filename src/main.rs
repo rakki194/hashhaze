@@ -96,17 +96,13 @@ async fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
 }
 
 async fn check_and_add_image_path(path: &Path, image_paths: &mut Vec<PathBuf>) -> Result<()> {
-    // Generate the output filename
+    // Generate the output filename by appending .bh
     let mut output_filename = path.to_path_buf();
-    let new_extension = format!(
-        "{}.bh",
-        output_filename
-            .extension()
+    output_filename.set_extension(format!("{}.bh", 
+        path.extension()
             .unwrap_or_default()
             .to_str()
-            .unwrap_or("")
-    );
-    output_filename.set_extension(new_extension);
+            .unwrap_or("")));
 
     // Check if the .bh file already exists
     if !output_filename.exists() {
@@ -120,15 +116,11 @@ async fn check_and_add_image_path(path: &Path, image_paths: &mut Vec<PathBuf>) -
 async fn process_image(input: PathBuf, components_x: usize, components_y: usize) -> Result<()> {
     // Generate the output filename
     let mut output_filename = input.clone();
-    let new_extension = format!(
-        "{}.bh",
-        output_filename
-            .extension()
+    output_filename.set_extension(format!("{}.bh",
+        input.extension()
             .unwrap_or_default()
             .to_str()
-            .unwrap_or("")
-    );
-    output_filename.set_extension(new_extension);
+            .unwrap_or("")));
 
     // Check if the .bh file already exists
     if output_filename.exists() {
