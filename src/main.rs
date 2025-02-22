@@ -1,13 +1,15 @@
 use anyhow::Result;
 use clap::Parser;
 use futures::future::join_all;
-use imx::{get_image_dimensions, is_image_file, process_jxl_file};
+use imx::{get_image_dimensions, is_image_file, is_jxl_file, process_jxl_file};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::Semaphore;
-use xio::{read_file_content, walk_directory, write_to_file};
+use tokio::sync::{Mutex, Semaphore};
+use xio::{walk_directory, write_to_file};
 
 mod blurhash;
+#[cfg(test)]
+mod tests;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -61,38 +63,36 @@ async fn main() -> Result<()> {
 }
 
 async fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
-    let mut image_paths = Vec::new();
+    let image_paths = Arc::new(Mutex::new(Vec::new()));
 
     for input in inputs {
-        if input.as_os_str().is_empty() || input == Path::new(".") {
-            // If input is empty or ".", use the current directory
-            walk_directory(".", "*", |path| {
+        let input_path = if input.as_os_str().is_empty() || input == Path::new(".") {
+            Path::new(".")
+        } else {
+            input.as_path()
+        };
+
+        if input_path.is_dir() {
+            let paths = image_paths.clone();
+            walk_directory(input_path, "*", move |path| {
                 let path = path.to_path_buf();
+                let paths = paths.clone();
                 async move {
-                    if is_image_file(&path.to_string_lossy()) {
-                        check_and_add_image_path(&path, &mut image_paths).await?;
+                    if is_image_file(path.as_path()) {
+                        let mut paths = paths.lock().await;
+                        check_and_add_image_path(&path, &mut paths).await?;
                     }
                     Ok(())
                 }
             })
             .await?;
-        } else if input.is_dir() {
-            walk_directory(input, "*", |path| {
-                let path = path.to_path_buf();
-                async move {
-                    if is_image_file(&path.to_string_lossy()) {
-                        check_and_add_image_path(&path, &mut image_paths).await?;
-                    }
-                    Ok(())
-                }
-            })
-            .await?;
-        } else if is_image_file(&input.to_string_lossy()) {
-            check_and_add_image_path(input, &mut image_paths).await?;
+        } else if is_image_file(input_path) {
+            let mut paths = image_paths.lock().await;
+            check_and_add_image_path(input_path, &mut paths).await?;
         }
     }
 
-    Ok(image_paths)
+    Ok(Arc::try_unwrap(image_paths).unwrap().into_inner())
 }
 
 async fn check_and_add_image_path(path: &Path, image_paths: &mut Vec<PathBuf>) -> Result<()> {
@@ -137,9 +137,10 @@ async fn process_image(input: PathBuf, components_x: usize, components_y: usize)
     }
 
     // Handle JXL files specially
-    if is_jxl_file(&input.to_string_lossy()) {
+    if is_jxl_file(input.as_path()) {
         let temp_png = input.with_extension("png");
-        process_jxl_file(&input, Some(|_| async move { Ok(()) })).await?;
+        let noop = |_: &Path| async { Ok(()) };
+        process_jxl_file(input.as_path(), Some(noop)).await?;
         let blurhash = process_regular_image(&temp_png, components_x, components_y).await?;
         write_to_file(&output_filename, &blurhash).await?;
         tokio::fs::remove_file(&temp_png).await?;
@@ -158,8 +159,10 @@ async fn process_regular_image(
     components_x: usize,
     components_y: usize,
 ) -> Result<String> {
-    let img = tokio::task::spawn_blocking(move || image::open(input)).await??;
-    let (width, height) = get_image_dimensions(input)?;
+    let input = input.to_path_buf();
+    let input_clone = input.clone();
+    let img = tokio::task::spawn_blocking(move || image::open(&input)).await??;
+    let (width, height) = get_image_dimensions(&input_clone)?;
     let rgba_image = img.to_rgba8();
     let pixels: Vec<u8> = rgba_image.into_raw();
 

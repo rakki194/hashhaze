@@ -11,11 +11,16 @@ pub enum EncodingError {
     BytesPerPixelMismatch,
 }
 
-fn sign_pow(value: f64, exp: f64) -> f64 {
-    value.abs().powf(exp).copysign(value)
+pub(crate) fn sign_pow(value: f64, exp: f64) -> f64 {
+    let abs_result = value.abs().powf(exp);
+    if exp % 2.0 == 0.0 {
+        abs_result
+    } else {
+        abs_result.copysign(value)
+    }
 }
 
-fn linear_to_srgb(value: f64) -> usize {
+pub(crate) fn linear_to_srgb(value: f64) -> usize {
     let v = f64::max(0f64, f64::min(1f64, value));
     if v <= 0.003_130_8 {
         (v * 12.92 * 255f64 + 0.5) as usize
@@ -24,7 +29,7 @@ fn linear_to_srgb(value: f64) -> usize {
     }
 }
 
-fn srgb_to_linear(value: usize) -> f64 {
+pub(crate) fn srgb_to_linear(value: usize) -> f64 {
     let v = (value as f64) / 255f64;
     if v <= 0.04045 {
         v / 12.92
@@ -170,14 +175,14 @@ where
     [r * scale, g * scale, b * scale]
 }
 
-fn encode_dc(value: [f64; 3]) -> usize {
+pub(crate) fn encode_dc(value: [f64; 3]) -> usize {
     let rounded_r = linear_to_srgb(value[0]);
     let rounded_g = linear_to_srgb(value[1]);
     let rounded_b = linear_to_srgb(value[2]);
     ((rounded_r << 16) + (rounded_g << 8) + rounded_b) as usize
 }
 
-fn encode_ac(value: [f64; 3], maximum_value: f64) -> usize {
+pub(crate) fn encode_ac(value: [f64; 3], maximum_value: f64) -> usize {
     let quant_r = f64::floor(f64::max(
         0f64,
         f64::min(
@@ -207,7 +212,7 @@ fn encode_ac(value: [f64; 3], maximum_value: f64) -> usize {
 
 // I considered using lazy_static! for this, but other implementations
 // seem to hard-code these as well. Doing that for consistency.
-static ENCODE_CHARACTERS: [char; 83] = [
+pub(crate) static ENCODE_CHARACTERS: [char; 83] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
     'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b',
     'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
@@ -215,7 +220,7 @@ static ENCODE_CHARACTERS: [char; 83] = [
     ']', '^', '_', '{', '|', '}', '~',
 ];
 
-fn encode_base83_string(value: usize, length: u32) -> String {
+pub(crate) fn encode_base83_string(value: usize, length: u32) -> String {
     (1..=length)
         .map(|i| (value / usize::pow(83, length - i)) % 83)
         .map(|digit| ENCODE_CHARACTERS[digit])
