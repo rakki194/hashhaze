@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::convert::TryFrom;
 use std::f64::consts::PI;
 use thiserror::*;
 
@@ -56,7 +55,7 @@ pub fn encode(
     // NOTE: We could clamp instead of Err.
     // The TS version does that. Not sure which one is better.
     // We also could (should?) be checking for the color space
-    if cx < 1 || cx > 9 || cy < 1 || cy > 9 {
+    if !(1..=9).contains(&cx) || !(1..=9).contains(&cy) {
         return Err(EncodingError::ComponentsNumberInvalid);
     }
 
@@ -96,7 +95,7 @@ pub fn encode(
 
     let mut hash = String::new();
 
-    let size_flag = ((cx - 1) + (cy - 1) * 9) as usize;
+    let size_flag = (cx - 1) + (cy - 1) * 9;
     hash += &encode_base83_string(size_flag, 1);
 
     let maximum_value: f64;
@@ -150,22 +149,19 @@ where
             let basis = basis_function(x as f64, y as f64);
             r += basis
                 * srgb_to_linear(
-                    usize::try_from(pixels[bytes_per_pixel * x + pixel_offset + y * bytes_per_row])
-                        .unwrap(),
+                    usize::from(pixels[bytes_per_pixel * x + pixel_offset + y * bytes_per_row]),
                 );
             g += basis
                 * srgb_to_linear(
-                    usize::try_from(
+                    usize::from(
                         pixels[bytes_per_pixel * x + pixel_offset + 1 + y * bytes_per_row],
-                    )
-                    .unwrap(),
+                    ),
                 );
             b += basis
                 * srgb_to_linear(
-                    usize::try_from(
+                    usize::from(
                         pixels[bytes_per_pixel * x + pixel_offset + 2 + y * bytes_per_row],
-                    )
-                    .unwrap(),
+                    ),
                 );
         }
     }
@@ -179,7 +175,7 @@ pub(crate) fn encode_dc(value: [f64; 3]) -> usize {
     let rounded_r = linear_to_srgb(value[0]);
     let rounded_g = linear_to_srgb(value[1]);
     let rounded_b = linear_to_srgb(value[2]);
-    ((rounded_r << 16) + (rounded_g << 8) + rounded_b) as usize
+    (rounded_r << 16) + (rounded_g << 8) + rounded_b
 }
 
 pub(crate) fn encode_ac(value: [f64; 3], maximum_value: f64) -> usize {

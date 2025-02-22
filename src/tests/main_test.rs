@@ -16,7 +16,7 @@ mod tests {
 
         // Verify that the image can be opened
         let test_path = test_file.clone();
-        let _ = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             image::open(&test_path).unwrap();
         }).await?;
 
@@ -47,7 +47,7 @@ mod tests {
         // Verify that the images can be opened
         let png_path = test_png.clone();
         let jpg_path = test_jpg.clone();
-        let _ = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             image::open(&png_path).unwrap();
             image::open(&jpg_path).unwrap();
         }).await?;
