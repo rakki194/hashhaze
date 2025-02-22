@@ -5,7 +5,7 @@ use imx::{get_image_dimensions, is_jxl_file, process_jxl_file};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
-use xio::write_to_file;
+use xio::{walk_directory, write_to_file};
 use tokio::fs;
 use std::future::Future;
 use std::pin::Pin;
@@ -24,21 +24,18 @@ pub(crate) fn is_image_file(path: &Path) -> bool {
     }
 }
 
-// Helper function to walk a directory recursively
-pub(crate) fn walk_directory(path: &Path, image_paths: Arc<Mutex<Vec<PathBuf>>>) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
-    Box::pin(async move {
-        let mut entries = fs::read_dir(path).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            if path.is_dir() {
-                walk_directory(&path, image_paths.clone()).await?;
-            } else if is_image_file(&path) {
-                let mut paths = image_paths.lock().await;
-                paths.push(path);
-            }
+// Helper function to process files with a specific extension
+async fn process_files_with_extension(dir: &Path, extension: &str, image_paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
+    walk_directory(dir, extension, move |path| {
+        let image_paths = image_paths.clone();
+        let path = path.to_path_buf();
+        async move {
+            let mut paths = image_paths.lock().await;
+            paths.push(path);
+            Ok(())
         }
-        Ok(())
     })
+    .await
 }
 
 #[derive(Parser, Debug)]
@@ -103,7 +100,10 @@ pub(crate) async fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> 
         };
 
         if input_path.is_dir() {
-            walk_directory(input_path, image_paths.clone()).await?;
+            // Process each supported image extension
+            for ext in ["jpg", "jpeg", "png", "gif", "webp"] {
+                process_files_with_extension(input_path, ext, image_paths.clone()).await?;
+            }
         } else if is_image_file(input_path) {
             let mut paths = image_paths.lock().await;
             paths.push(input_path.to_path_buf());
