@@ -1,3 +1,5 @@
+#![warn(clippy::all, clippy::pedantic)]
+
 use std::cmp::Ordering;
 use std::f64::consts::PI;
 use thiserror::*;
@@ -148,21 +150,17 @@ where
         for y in 0..height {
             let basis = basis_function(x as f64, y as f64);
             r += basis
-                * srgb_to_linear(
-                    usize::from(pixels[bytes_per_pixel * x + pixel_offset + y * bytes_per_row]),
-                );
+                * srgb_to_linear(usize::from(
+                    pixels[bytes_per_pixel * x + pixel_offset + y * bytes_per_row],
+                ));
             g += basis
-                * srgb_to_linear(
-                    usize::from(
-                        pixels[bytes_per_pixel * x + pixel_offset + 1 + y * bytes_per_row],
-                    ),
-                );
+                * srgb_to_linear(usize::from(
+                    pixels[bytes_per_pixel * x + pixel_offset + 1 + y * bytes_per_row],
+                ));
             b += basis
-                * srgb_to_linear(
-                    usize::from(
-                        pixels[bytes_per_pixel * x + pixel_offset + 2 + y * bytes_per_row],
-                    ),
-                );
+                * srgb_to_linear(usize::from(
+                    pixels[bytes_per_pixel * x + pixel_offset + 2 + y * bytes_per_row],
+                ));
         }
     }
 
@@ -180,13 +178,13 @@ pub(crate) fn encode_dc(value: [f64; 3]) -> usize {
 
 pub(crate) fn encode_ac(value: [f64; 3], maximum_value: f64) -> usize {
     let quant_r = f64::floor(
-        f64::floor(sign_pow(value[0] / maximum_value, 0.5) * 9f64 + 9.5).clamp(0f64, 18f64)
+        f64::floor(sign_pow(value[0] / maximum_value, 0.5) * 9f64 + 9.5).clamp(0f64, 18f64),
     );
     let quant_g = f64::floor(
-        f64::floor(sign_pow(value[1] / maximum_value, 0.5) * 9f64 + 9.5).clamp(0f64, 18f64)
+        f64::floor(sign_pow(value[1] / maximum_value, 0.5) * 9f64 + 9.5).clamp(0f64, 18f64),
     );
     let quant_b = f64::floor(
-        f64::floor(sign_pow(value[2] / maximum_value, 0.5) * 9f64 + 9.5).clamp(0f64, 18f64)
+        f64::floor(sign_pow(value[2] / maximum_value, 0.5) * 9f64 + 9.5).clamp(0f64, 18f64),
     );
 
     (quant_r * 19f64 * 19f64 + quant_g * 19f64 + quant_b) as usize

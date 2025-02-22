@@ -1,3 +1,5 @@
+#![warn(clippy::all, clippy::pedantic)]
+
 use anyhow::Result;
 use clap::Parser;
 use futures::future::join_all;
@@ -22,7 +24,11 @@ pub(crate) fn is_image_file(path: &Path) -> bool {
 }
 
 // Helper function to process files with a specific extension
-async fn process_files_with_extension(dir: &Path, extension: &str, image_paths: Arc<Mutex<Vec<PathBuf>>>) -> Result<()> {
+async fn process_files_with_extension(
+    dir: &Path,
+    extension: &str,
+    image_paths: Arc<Mutex<Vec<PathBuf>>>,
+) -> Result<()> {
     walk_directory(dir, extension, move |path| {
         let image_paths = image_paths.clone();
         let path = path.to_path_buf();
@@ -116,11 +122,10 @@ pub(crate) async fn get_image_paths(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> 
 async fn process_image(input: PathBuf, components_x: usize, components_y: usize) -> Result<()> {
     // Generate the output filename
     let mut output_filename = input.clone();
-    output_filename.set_extension(format!("{}.bh",
-        input.extension()
-            .unwrap_or_default()
-            .to_str()
-            .unwrap_or("")));
+    output_filename.set_extension(format!(
+        "{}.bh",
+        input.extension().unwrap_or_default().to_str().unwrap_or("")
+    ));
 
     // Check if the .bh file already exists
     if output_filename.exists() {
