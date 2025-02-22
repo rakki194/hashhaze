@@ -7,7 +7,6 @@ description = "A CLI application for generating BlurHash from images"
 license = "MIT"
 
 [dependencies]
-image = "0.25.5"
 clap = { version = "4.5.30", features = ["derive"] }
 thiserror = "2.0.11"
 tokio = { version = "1.43.0", features = ["full"] }
