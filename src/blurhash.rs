@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 use std::f64::consts::PI;
-use thiserror::*;
+use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
 pub enum EncodingError {
@@ -102,7 +102,10 @@ pub fn encode(
 
     let maximum_value: f64;
 
-    if !ac.is_empty() {
+    if ac.is_empty() {
+        maximum_value = 1f64;
+        hash += &encode_base83_string(0, 1);
+    } else {
         // I'm sure there's a better way to write this; following the Swift atm :)
         let actual_maximum_value = ac
             .clone()
@@ -116,9 +119,6 @@ pub fn encode(
         );
         maximum_value = ((quantised_maximum_value + 1) as f64) / 166f64;
         hash += &encode_base83_string(quantised_maximum_value, 1);
-    } else {
-        maximum_value = 1f64;
-        hash += &encode_base83_string(0, 1);
     }
 
     hash += &encode_base83_string(encode_dc(dc), 4);

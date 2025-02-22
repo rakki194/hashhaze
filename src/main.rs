@@ -48,11 +48,11 @@ struct Args {
     #[arg(required = true)]
     inputs: Vec<PathBuf>,
 
-    /// Number of X components for BlurHash
+    /// Number of X components for `BlurHash`
     #[arg(short = 'x', long, default_value_t = 4)]
     components_x: usize,
 
-    /// Number of Y components for BlurHash
+    /// Number of Y components for `BlurHash`
     #[arg(short = 'y', long, default_value_t = 3)]
     components_y: usize,
 }
@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
     // Check for any errors
     for result in results {
         if let Err(e) = result? {
-            eprintln!("Error processing image: {}", e);
+            eprintln!("Error processing image: {e}");
         }
     }
 
