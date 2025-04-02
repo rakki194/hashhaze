@@ -1,4 +1,10 @@
 #![warn(clippy::all, clippy::pedantic)]
+// Allow specific clippy lints that are too strict for this codebase
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
 
 use std::cmp::Ordering;
 use std::f64::consts::PI;
@@ -44,7 +50,7 @@ pub(crate) fn srgb_to_linear(value: usize) -> f64 {
 // TODO: Think about argument order here...
 // What is more common in Rust? Data or config first?
 pub fn encode(
-    pixels: Vec<u8>,
+    pixels: &[u8],
     cx: usize,
     cy: usize,
     width: usize,
@@ -72,7 +78,7 @@ pub fn encode(
         for x in 0..cx {
             let normalisation = if x == 0 && y == 0 { 1f64 } else { 2f64 };
             let factor = multiply_basis_function(
-                &pixels,
+                pixels,
                 width,
                 height,
                 bytes_per_row,

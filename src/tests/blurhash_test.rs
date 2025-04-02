@@ -52,13 +52,13 @@ mod tests {
     #[test]
     fn test_encode_invalid_components() {
         let pixels = vec![0u8; 16]; // 2x2 RGBA image
-        let result = encode(pixels.clone(), 0, 1, 2, 2);
+        let result = encode(&pixels.clone(), 0, 1, 2, 2);
         assert!(matches!(
             result,
             Err(EncodingError::ComponentsNumberInvalid)
         ));
 
-        let result = encode(pixels, 10, 1, 2, 2);
+        let result = encode(&pixels, 10, 1, 2, 2);
         assert!(matches!(
             result,
             Err(EncodingError::ComponentsNumberInvalid)
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn test_encode_invalid_pixel_count() {
         let pixels = vec![0u8; 15]; // Invalid size for RGBA
-        let result = encode(pixels, 4, 3, 2, 2);
+        let result = encode(&pixels, 4, 3, 2, 2);
         assert!(matches!(result, Err(EncodingError::BytesPerPixelMismatch)));
     }
 
@@ -82,7 +82,7 @@ mod tests {
             255, 255, 255, 255, // White pixel
         ];
 
-        let result = encode(pixels, 4, 3, 2, 2);
+        let result = encode(&pixels, 4, 3, 2, 2);
         assert!(result.is_ok());
         let hash = result.unwrap();
         assert!(!hash.is_empty());
@@ -99,7 +99,7 @@ mod tests {
     fn test_encode_solid_color() {
         let red = Rgba([255, 0, 0, 255]);
         let pixels = create_test_image(4, 4, red);
-        let result = encode(pixels, 4, 3, 4, 4);
+        let result = encode(&pixels, 4, 3, 4, 4);
         assert!(result.is_ok());
     }
 }

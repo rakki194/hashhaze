@@ -164,7 +164,7 @@ async fn process_regular_image(
     let pixels: Vec<u8> = rgba_image.into_raw();
 
     let blurhash = blurhash::encode(
-        pixels,
+        &pixels,
         components_x,
         components_y,
         width as usize,
