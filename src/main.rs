@@ -136,7 +136,7 @@ async fn process_image(input: PathBuf, components_x: usize, components_y: usize)
     // Handle JXL files specially
     if is_jxl_file(input.as_path()) {
         let temp_png = input.with_extension("png");
-        let noop = |_: &Path| async { Ok(()) };
+        let noop = |_: PathBuf| async { Ok(()) };
         process_jxl_file(input.as_path(), Some(noop)).await?;
         let blurhash = process_regular_image(&temp_png, components_x, components_y).await?;
         write_to_file(&output_filename, &blurhash).await?;
